@@ -103,3 +103,14 @@ function save_taxonomy_custom_meta($term_id)
 
 /**Off WP ftp  */
 define('FS_METHOD', 'direct');
+
+/**Add page to console */
+add_action('admin_menu', 'newPage');
+function newPage()
+{
+    add_submenu_page('options-general.php', 'test_page_title', 'test_menu_title', 'edit_pages', 'test_menu_slug', 'test_function_test_page');
+    function test_function_test_page()
+    {
+        echo '<h1>TEST PAGE</h2>' . '<p>This is Content</p>';
+    }
+}
