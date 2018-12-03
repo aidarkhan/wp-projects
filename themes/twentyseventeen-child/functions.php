@@ -2,13 +2,14 @@
 /**
  * Twentyseventeen child theme
  */
+add_action('wp_enqueue_scripts', 'enqueue_parent_styles');
+function enqueue_parent_styles()
+{
+    wp_enqueue_style('parent-style', get_template_directory_uri() . '/style.css');
+}
 
- add_action('wp_enqueue_scripts', 'enqueue_parent_styles');
- function enqueue_parent_styles()
- {
-     wp_enqueue_style('parent-style', get_template_directory_uri() . '/style.css');
- }
- 
+require get_stylesheet_directory() . '/inc/metaboxes.php';
+
 /**Custom metabox for post*/
 add_action('add_meta_boxes', 'my_new_metabox');
 function my_new_metabox()
@@ -30,19 +31,15 @@ function contact_email_callback($post)
 add_action('save_post', 'true_save_box_data');
 function true_save_box_data($post_id)
 {
-    // проверяем, пришёл ли запрос со страницы с метабоксом
     if (!isset( $_POST['contact_email_metabox_nonce']) || !wp_verify_nonce( $_POST['contact_email_metabox_nonce'], basename( __FILE__ ))) {
         return $post_id;
     }
-    // проверяем, является ли запрос автосохранением
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
         return $post_id;
     }
-    // проверяем, права пользователя, может ли он редактировать записи
     if (!current_user_can( 'edit_post', $post_id )) {
         return $post_id;
     }
-    // теперь также проверим тип записи	
     $post = get_post($post_id);
     if ($post->post_type == 'post') {
         update_post_meta($post_id, 'email_value', esc_attr($_POST['contact_email_field']));
@@ -50,67 +47,59 @@ function true_save_box_data($post_id)
     return $post_id;
 }
 
-/**Custom metabox for term */
-// add_action( 'category_edit_form_fields', 'my_term_metabox');
-// function my_term_metabox()
-// {
-    
-// }
-
-// Создание метаполя
-
-add_action('init', 'wpm_category_register_meta');
-
-function wpm_category_register_meta() {
-    register_meta('term', 'details', 'wpm_sanitize_details');
-}
-
-function wpm_sanitize_details( $details ) {
-    return wp_kses_post( $details );
-}
-
-// Создание метабокса в категории товара
-
-add_action('category_edit_form_fields', 'wpm_category_edit_details_meta');
-
-function wpm_category_edit_details_meta($term)
+/**Custom fields for taxonomy and category */
+add_action( 'category_add_form_fields', 'taxonomy_add_new_meta_field', 10, 2 ); //Вместо "category" любая другая кастомная таксономия
+function taxonomy_add_new_meta_field()
 {
-    $category_details = get_term_meta($term->term_id, 'details', true);
-    if (!$category_details) {
-        $category_details = '';
-    }
-    $settings = array('textarea_name' => 'wpm-category-details');
+    $html = '
+    <div class="form-field">
+        <label for="custom_term_meta">Демо-поле</label>
+        <input type="text" name="custom_term_meta" id="custom_term_meta" value="">
+        <p class="description">Enter a value for this field</p>
+    </div>';
+    echo $html;
+}
 
-    wp_nonce_field(basename(__FILE__), 'wpm_category_details_nonce');
-    wp_editor(wpm_sanitize_details($category_details), 'category_details', $settings);
+add_action( 'category_edit_form_fields', 'taxonomy_edit_meta_field', 10, 2 );
+function taxonomy_edit_meta_field($term)
+{
+    $term_meta = get_term_meta($term->term_id, 'custom_term_meta', true) ?: '';
 
     $html = '
     <tr class="form-field">
-        <th scope="row" valign="top"><label for="wpm-category-details">Наименование (им.п.)</label></th>
+        <th scope="row" valign="top"><label for="custom_term_meta">Демо-поле</label></th>
         <td>
-            <p class="description">Вписать название категории в родительном падеже</p>
+            <input type="text" name="custom_term_meta" id="custom_term_meta" value="' . $term_meta . '">
+            <p class="description">Укажите тут значение</p>
         </td>
     </tr>';
     echo $html;
 }
 
-// Сохранение данных метаполя
-
-add_action('create_category', 'wpm_category_details_meta_save');
-add_action('edit_category', 'wpm_category_details_meta_save');
-
-function wpm_category_details_meta_save($term_id)
+add_action( 'edited_category', 'save_taxonomy_custom_meta', 10, 2 );
+add_action( 'create_category', 'save_taxonomy_custom_meta', 10, 2 );
+function save_taxonomy_custom_meta($term_id)
 {
-    if (!isset( $_POST['wpm_category_details_nonce']) || !wp_verify_nonce($_POST['wpm_category_details_nonce'], basename(__FILE__))) {
-        return;
+    if (!isset($_POST['custom_term_meta']) || !current_user_can('edit_term', $term_id)) {
+        return false;
     }
-
-    $old_details = get_term_meta($term_id, 'details', true);
-    $new_details = isset($_POST['wpm-category-details']) ? $_POST['wpm-category-details'] : '';
-
-    if ($old_details && '' === $new_details) {
-        delete_term_meta($term_id, 'details');
-    } else if ($old_details !== $new_details) {
-        update_term_meta($term_id, 'details', wpm_sanitize_details($new_details));
+    // Verify nonce
+    if (isset($_POST['_wpnonce']) && !wp_verify_nonce($_POST['_wpnonce'], 'update-tag_' . $term_id)) {
+        return false;
     }
+    if (isset($_POST['_wpnonce_add-tag']) && !wp_verify_nonce($_POST['_wpnonce_add-tag'], 'add-tag')) {
+        return false;
+    }
+    // Remove slashes from a string
+    $extra = wp_unslash($_POST['custom_term_meta']);
+
+    if(empty($extra)) {
+        delete_term_meta($term_id, 'custom_term_meta');
+    } else {
+        update_term_meta($term_id, 'custom_term_meta', $_POST['custom_term_meta']);
+    }
+    return $term_id;
 }
+
+/**Off WP ftp  */
+define('FS_METHOD', 'direct');
